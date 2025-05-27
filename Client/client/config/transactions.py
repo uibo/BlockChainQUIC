@@ -36,4 +36,4 @@ def fill_tx_pool(num: int):
     for i in range(0, num):
         tx_pool.append(rlp.encode(make_transaction()))
 
-fill_tx_pool()
+fill_tx_pool(100)

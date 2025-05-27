@@ -1,34 +1,69 @@
+import asyncio
 from coincurve import PrivateKey, PublicKey
-import socket
 from random import randbytes
 from eth_utils import keccak
 
-def make_shared_secret_by_initiator(conn: socket.socket):
-    ephemeral_priv = PrivateKey()
-    ephemeral_pub_bytes = ephemeral_priv.public_key.format(compressed=False)[1:]
+import config.nodes
+
+def make_partial_msg():
+    ephe_priv = PrivateKey() # ECDSA 상에서 32 byte 개인키
+    ephe_pub = ephe_priv.public_key.format(compressed=False)
     nonce = randbytes(32)
-    msg = keccak(ephemeral_pub_bytes)
-    signature = ephemeral_priv.sign_recoverable(msg)
     version = b"\x04"
-    auth_msg = signature + ephemeral_pub_bytes + nonce + version
-    conn.send(auth_msg)
-    ack_msg = conn.recv(97)
-    receiver_pub_key = ack_msg[:64]
-    shared_secret = ephemeral_priv.ecdh(b'\x04' + receiver_pub_key)
-    print(shared_secret)
+    return ephe_priv, ephe_pub, nonce, version
 
+def derive_rlpx_keys(ecdh_shared_secret: bytes, initiator_nonce: bytes, recipient_nonce: bytes):
+    assert len(ecdh_shared_secret) == 32
+    assert len(initiator_nonce) == 32
+    assert len(recipient_nonce) == 32
 
-def make_shared_secret_by_receiver(conn: socket.socket):
-    auth_msg = conn.recv(162)
+    shared_secret = keccak(ecdh_shared_secret)  # Step 1
+    key_material_input = shared_secret + initiator_nonce + recipient_nonce
+    key_material = keccak(key_material_input)   # Step 2
+
+    aes_secret = key_material[:16]
+    mac_secret = key_material[16:]
+    
+    return aes_secret, mac_secret
+
+async def make_shared_secret_by_receiver(reader: asyncio.StreamReader,
+                                          writer: asyncio.StreamWriter):
+    ephe_priv, ephe_pub, nonce, version = make_partial_msg()
+    auth_msg = await reader.readexactly(163)
     signature = auth_msg[:65]
-    initiator_pub_key = auth_msg[65:129]
-    msg = keccak(auth_msg[65:129])
-    signer = PublicKey.from_signature_and_message(signature, msg).format(compressed=False)
-    print(signer[1:] == initiator_pub_key)
-    ephemeral_priv = PrivateKey()
-    ephemeral_pub_bytes = ephemeral_priv.public_key.format(compressed=False)[1:]
-    nonce = randbytes(32)
-    version = b"\x04"
-    ack_msg = ephemeral_pub_bytes + nonce + version
-    conn.send(ack_msg)
-    print(ephemeral_priv.ecdh(signer))
+    initiator_ephe_pub = auth_msg[65:130]
+    initiator_nonce = auth_msg[130:162]
+    initiator_version = auth_msg[162:163]
+    assert initiator_version == version
+    signer = PublicKey.from_signature_and_message(signature, keccak(initiator_ephe_pub), hasher=None).format(compressed=False).hex()
+    for NODE in config.nodes.NODE_STATE.KNOWN_NODES:
+        if NODE["node_id"] == signer:
+            ack_msg = ephe_pub + nonce + version
+            writer.write(ack_msg)
+            await writer.drain()
+            ecdh = ephe_priv.ecdh(initiator_ephe_pub)
+            aes_secret, mac_secret = derive_rlpx_keys(ecdh, initiator_nonce, nonce)
+            return aes_secret, mac_secret
+        else:
+            raise Exception
+
+async def make_shared_secret_by_initiator(static_priv: PrivateKey,
+                                           reader: asyncio.StreamReader,
+                                           writer: asyncio.StreamWriter):
+    ephe_priv, ephe_pub, nonce, version = make_partial_msg()
+    msg = keccak(ephe_pub)
+    signature = static_priv.sign_recoverable(msg, hasher=None)
+    auth_msg = signature + ephe_pub + nonce + version
+
+    writer.write(auth_msg)
+    await writer.drain()
+
+    ack_msg = await reader.readexactly(98)
+    receiver_ephe_pub = ack_msg[:65]
+    receiver_nonce = ack_msg[65:97]
+    receiver_version = ack_msg[97:98]
+    assert receiver_version == version
+
+    ecdh = ephe_priv.ecdh(receiver_ephe_pub)
+    aes_secret, mac_secret = derive_rlpx_keys(ecdh, nonce, receiver_nonce)
+    return aes_secret, mac_secret
