@@ -7,6 +7,9 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
+py-evm = "^0.12.1b1"
+eth-rlp = "^2.2.0"
+eciespy = "^0.4.4"
 
 
 [build-system]
