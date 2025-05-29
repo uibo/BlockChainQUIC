@@ -156,34 +156,25 @@ class Node:
 STATIC_PRIV = [
     PrivateKey(bytes.fromhex('48c3222ebbbb3f2ca0a121af3eb42c1b331a94b1da6fd8dac97e90405e19a57d')),
     PrivateKey(bytes.fromhex('8e0feade80f19b69e5c9f77f359decbfae3fe92780f19eea32c71bb2bdd1414f')),
-    PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d88428e')),
-    PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d884282')),
-    PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d884283')),
-    PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d884284')),
-    PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d884285')),
-    PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d884286')),
-    PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d884287')),
+    # PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d88428e')),
+    # PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d884282')),
+    # PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d884283')),
+    # PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d884284')),
+    # PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d884285')),
+    # PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d884286')),
+    # PrivateKey(bytes.fromhex('7f6321d1445b2c00e23f1dd660908b52974ab12edb237d603e07d08f9d884287')),
 ]
 
 
 if __name__ == "__main__":
     for _ in range(100):
         tx_list_array.append(make_tx_list(100)) 
+    static_priv = STATIC_PRIV[1]
+    host, port, static_pub = ("0.0.0.0", 30303, static_priv.public_key.format(compressed=False))
     KNOWN_NODES = [
-        ("127.0.0.1", 30300, STATIC_PRIV[0].public_key.format(compressed=False)),
-        ("127.0.0.1", 30301, STATIC_PRIV[1].public_key.format(compressed=False)),
-        ("127.0.0.1", 30302, STATIC_PRIV[2].public_key.format(compressed=False)),
-        ("127.0.0.1", 30303, STATIC_PRIV[3].public_key.format(compressed=False)),
-        ("127.0.0.1", 30304, STATIC_PRIV[4].public_key.format(compressed=False)),
-        ("127.0.0.1", 30305, STATIC_PRIV[5].public_key.format(compressed=False)),
-        ("127.0.0.1", 30306, STATIC_PRIV[6].public_key.format(compressed=False)),
-        ("127.0.0.1", 30307, STATIC_PRIV[7].public_key.format(compressed=False)),
-        ("127.0.0.1", 30308, STATIC_PRIV[8].public_key.format(compressed=False)),
+        ("13.209.43.101", 30303, STATIC_PRIV[1].public_key.format(compressed=False)),
     ]
-    idx = int(input("▶ Enter node index (0, 1, 2): "))
-    host, port, static_pub = KNOWN_NODES[idx]
-    static_priv = STATIC_PRIV[idx]
-    peers = [n for i, n in enumerate(KNOWN_NODES) if i != idx]
+    peers = [n for n in KNOWN_NODES]
 
     node = Node(host, port, static_pub, static_priv, peers)
     try:
