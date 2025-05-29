@@ -6,12 +6,12 @@ from eth_utils import keccak
 
 def make_component():
     ephe_priv = PrivateKey()  # ECDSA 상에서 32 byte 개인키
-    ephe_pub = ephe_priv.public_key.format(compressed=False)  # 65바이트 uncompressed
+    ephe_pub = ephe_priv.public_key.format(compressed=False)  # 65바이트 uncompressed prefix 0x04
     nonce = randbytes(32)
     version = b"\x04"
     return ephe_priv, ephe_pub, nonce, version
 
-def derive_rlpx_keys(ecdh_shared_secret: bytes, initiator_nonce: bytes, recipient_nonce: bytes):
+def KDF(ecdh_shared_secret: bytes, initiator_nonce: bytes, recipient_nonce: bytes):
     assert len(ecdh_shared_secret) == 32
     assert len(initiator_nonce) == 32
     assert len(recipient_nonce) == 32
@@ -23,10 +23,7 @@ def derive_rlpx_keys(ecdh_shared_secret: bytes, initiator_nonce: bytes, recipien
     mac_secret = key_material[16:]
     return aes_secret, mac_secret
 
-async def handshake_initiator(static_priv: PrivateKey,
-                              peer_pub: bytes,
-                              reader: asyncio.StreamReader,
-                              writer: asyncio.StreamWriter):
+async def handshake_initiator(static_priv: PrivateKey, peer_pub: bytes, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     # 1) EPH key + nonce + version 준비
     ephe_priv, ephe_pub, nonce, version = make_component()
 
@@ -48,14 +45,11 @@ async def handshake_initiator(static_priv: PrivateKey,
 
     # 5) 키 도출
     ecdh = ephe_priv.ecdh(recv_ephe_pub)
-    aes_sec, mac_sec = derive_rlpx_keys(ecdh, nonce, recv_nonce)
+    aes_sec, mac_sec = KDF(ecdh, nonce, recv_nonce)
     return aes_sec, mac_sec
 
-async def handshake_receiver(static_priv: PrivateKey,
-                             peers: list[tuple],
-                             reader: asyncio.StreamReader,
-                             writer: asyncio.StreamWriter,):
-    # 1) 준비
+async def handshake_receiver(static_priv: PrivateKey, peers: list[tuple], reader: asyncio.StreamReader, writer: asyncio.StreamWriter,):
+    # 1) EPH key + nonce + version 준비
     ephe_priv, ephe_pub, nonce, version = make_component()
 
     # 2) auth_msg 수신 → 복호화
@@ -80,5 +74,5 @@ async def handshake_receiver(static_priv: PrivateKey,
 
     # 5) 키 도출
     ecdh = ephe_priv.ecdh(init_pub)
-    aes_sec, mac_sec = derive_rlpx_keys(ecdh, init_nonce, nonce)
+    aes_sec, mac_sec = KDF(ecdh, init_nonce, nonce)
     return aes_sec, mac_sec
