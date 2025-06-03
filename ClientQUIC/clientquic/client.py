@@ -1,13 +1,13 @@
 import asyncio
 import ssl
 
-from eth_utils import keccak
-from ecies import encrypt, decrypt
 from coincurve import PrivateKey
 from aioquic.asyncio import connect
 from aioquic.asyncio.protocol import QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
-from aioquic.quic.events import StreamDataReceived, ProtocolNegotiated, HandshakeCompleted
+from aioquic.quic.events import StreamDataReceived
+
+from tx_pool import make_tx_list
 
 from RLPx_layer import RLPx_layer
 
@@ -25,12 +25,16 @@ class ClientProtocol(QuicConnectionProtocol):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.rlpx_layer = RLPx_layer(1, 0)
+        self.buffered = bytearray()
 
     def quic_event_received(self, event):
         if isinstance(event, StreamDataReceived):
             if (event.stream_id == 0):
                 self.rlpx_layer.handshake_initiator2(event.data)
                 print(self.rlpx_layer.aes_sec, self.rlpx_layer.mac_sec)
+                payload = self.rlpx_layer.pack_tx_list(tx_list)
+                print(len(payload))
+                self._quic.send_stream_data(self._quic.get_next_available_stream_id(), payload)
        
 async def run():
     config = QuicConfiguration(is_client=True)
@@ -41,6 +45,8 @@ async def run():
         enc_auth = conn.rlpx_layer.handshake_initiator1()
         conn._quic.send_stream_data(stream_id, enc_auth)
         await asyncio.Future()
+
+tx_list = make_tx_list(10)
 
 if __name__ == "__main__":
     asyncio.run(run())

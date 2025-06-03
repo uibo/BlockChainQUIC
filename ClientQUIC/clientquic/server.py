@@ -31,6 +31,9 @@ class ServerProtocol(QuicConnectionProtocol):
                 enc_ack = self.rlpx_layer.handshake_receiver(event.data)
                 self._quic.send_stream_data(event.stream_id, enc_ack)
                 print(self.rlpx_layer.aes_sec, self.rlpx_layer.mac_sec)
+            else:
+                print(1)
+                print(len(event.data))
             
 
 async def main():

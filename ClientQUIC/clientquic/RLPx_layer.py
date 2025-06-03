@@ -3,6 +3,7 @@ from coincurve import PrivateKey, PublicKey
 from ecies import encrypt, decrypt
 from random import randbytes
 from eth_utils import keccak
+import rlp
 
 STATIC_PRIV = [
     PrivateKey(bytes.fromhex('48c3222ebbbb3f2ca0a121af3eb42c1b331a94b1da6fd8dac97e90405e19a57d')),
@@ -33,8 +34,12 @@ class RLPx_layer():
         }
         self.peer = {}
         self.peers = STATIC_PUBL
+
+        # --- RLPx 암호화/복호화에 사용할 키 및 시퀀스 카운터 ---
         self.aes_sec = None
         self.mac_sec = None
+        self.egress_seq = 0
+        self.ingress_seq = 0
 
     def make_component(self):
         self.mine["ephe_priv"] = PrivateKey()  # ECDSA 상에서 32 byte 개인키
@@ -97,3 +102,28 @@ class RLPx_layer():
         enc_ack = encrypt(signer, ack_msg)
         self.KDF(0)
         return enc_ack
+    
+    def pack_tx_list(self, tx_list: list[rlp.Serializable]) -> bytes:
+        """
+        - tx_list: rlp.Serializable을 상속한 LegacyTransaction 객체들의 리스트
+        - 리턴값: RLPx framing·암호화가 완료된 '바이트'
+        """
+        if self.aes_sec is None or self.mac_sec is None:
+            raise Exception("pack_tx_list: AES 혹은 MAC 키가 설정되지 않았습니다.")
+
+        # 1) RLP 직렬화: tx_list 전체
+        payload = rlp.encode(tx_list)
+
+        return payload
+
+    def unpack_tx_list(self, payload: bytes):
+        """
+        - frame: pack_tx_list()가 반환한 전체 프레임 바이트
+        - 리턴값: rlp.decode(...) 결과 (tx_list를 그대로 복원한 Python 리스트)
+        """
+        if self.aes_sec is None or self.mac_sec is None:
+            raise Exception("unpack_tx_list: AES 혹은 MAC 키가 설정되지 않았습니다.")
+
+        tx_list = rlp.decode(payload)
+
+        return tx_list
