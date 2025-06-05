@@ -18,7 +18,7 @@ class LegacyTransaction(rlp.Serializable):
 
 def make_tx_list(num: int):
     tx_list = []
-    for _ in range(100):
+    for _ in range(num):
         tx_list.append(LegacyTransaction(
             nonce=randint(1, 100000),
             gas_price=20_000_000_000,
@@ -31,3 +31,5 @@ def make_tx_list(num: int):
             s=int("0x5f74bcd9d8ed5f6014dbf7d7d1ee84adf196e2df6a11a2d32b3b1a3ccf3e5e6b", 16),
         ))
     return tx_list
+
+tx_list_array = make_tx_list(10000)

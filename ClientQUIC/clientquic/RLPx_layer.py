@@ -1,129 +1,208 @@
-import asyncio
+from random import randbytes
 from coincurve import PrivateKey, PublicKey
 from ecies import encrypt, decrypt
-from random import randbytes
-from eth_utils import keccak
+from aioquic.quic.connection import QuicConnection
+from eth_utils import keccak as keccak256
+from Crypto.Cipher import AES
+from Crypto.Hash import keccak
 import rlp
+from Crypto.Util import Counter
 
-STATIC_PRIV = [
-    PrivateKey(bytes.fromhex('48c3222ebbbb3f2ca0a121af3eb42c1b331a94b1da6fd8dac97e90405e19a57d')),
-    PrivateKey(bytes.fromhex('8e0feade80f19b69e5c9f77f359decbfae3fe92780f19eea32c71bb2bdd1414f')),
-]
+def xor_bytes(a: bytes, b: bytes) -> bytes:
+    return bytes(x ^ y for x, y in zip(a, b))
 
-STATIC_PUBL = [
-    STATIC_PRIV[0].public_key.format(compressed=False),
-    STATIC_PRIV[1].public_key.format(compressed=False),
-]
+class RLPx_Layer():
+    def __init__(self, _quic: QuicConnection):
+        self.ephe_private_key = None
+        self.ephe_public_key = None
+        self.nonce = None
+        self.version = b"\x04"
+        self._quic = _quic
+        self.aes_secret = None
+        self.mac_secret = None
+        self.egress_mac = None
+        self.ingress_mac = None
 
-class RLPx_layer():
-    def __init__(self, mine: int, counterpart: int):
-        self.mine = {
-            "static_priv": STATIC_PRIV[mine],
-            "static_publ": STATIC_PUBL[mine],
-            "ephe_priv" : None,
-            "ephe_publ": None,
-            "nonce": None,
-            "version": None
-        }
-        self.counterpart = {
-            "static_publ": STATIC_PUBL[counterpart],
-            "ephe_priv" : None,
-            "ephe_publ": None,
-            "nonce": None,
-            "version": None
-        }
-        self.peer = {}
-        self.peers = STATIC_PUBL
+    def set_ephemeral_key_and_nonce(self):
+        self.ephe_private_key = PrivateKey()  # ECDSA 상에서 32 byte 개인키
+        self.ephe_public_key = self.ephe_private_key.public_key.format(compressed=False)  # 65바이트 uncompressed prefix 0x04
+        self.nonce = randbytes(32)
 
-        # --- RLPx 암호화/복호화에 사용할 키 및 시퀀스 카운터 ---
-        self.aes_sec = None
-        self.mac_sec = None
-        self.egress_seq = 0
-        self.ingress_seq = 0
-
-    def make_component(self):
-        self.mine["ephe_priv"] = PrivateKey()  # ECDSA 상에서 32 byte 개인키
-        self.mine["ephe_publ"] = self.mine["ephe_priv"].public_key.format(compressed=False)  # 65바이트 uncompressed prefix 0x04
-        self.mine["nonce"] = randbytes(32)
-        self.mine["version"] = b"\x04"
-
-    def KDF(self, num=0):
-        ecdh = self.mine["ephe_priv"].ecdh(self.counterpart["ephe_publ"])
-        shared_secret = keccak(ecdh)
-        if num == 0:
-            key_material = keccak(shared_secret + self.mine["nonce"] + self.counterpart["nonce"])  # Step 2
-        else:
-            key_material = keccak(shared_secret + self.counterpart["nonce"] + self.mine["nonce"])  # Step 2
-
-        self.aes_sec = key_material[:16]
-        self.mac_sec = key_material[16:]
-
-    def handshake_initiator1(self):
-    # 1) EPH key + nonce + version 준비
-        self.make_component()
-
-        # 2) 서명 → auth_msg 조립
-        signature = self.mine["static_priv"].sign_recoverable(self.mine["ephe_publ"], hasher=keccak)
-        auth_msg = signature + self.mine["ephe_publ"] + self.mine["nonce"] + self.mine["version"]
-
-        # 3) 암호화 후 전송
-        enc_auth = encrypt(self.counterpart["static_publ"], auth_msg)
-        return enc_auth
+    def make_auth_body(self, private_key: PrivateKey):
+        signature = private_key.sign_recoverable(self.ephe_public_key, hasher=keccak256)
+        return signature + self.ephe_public_key + self.nonce + self.version
     
-    def handshake_initiator2(self, enc_ack):
-        # 4) ACK 수신 → 복호화
-        ack = decrypt(self.mine["static_priv"].to_hex(), enc_ack)
-        self.counterpart["ephe_publ"] = ack[:65]
-        self.counterpart["nonce"]    = ack[65:97]
-        assert ack[97:98] == self.mine["version"]
+    def set_auth_mac(self, recipient_nonce: bytes, auth: bytes):
+        return keccak.new(data=(xor_bytes(self.mac_secret, recipient_nonce) + auth), digest_bytes=32, update_after_digest=True)
 
-        # 5) 키 도출
-        self.KDF(1)
+    def set_ack_mac(self, initiator_nonce: bytes, ack: bytes):
+        return keccak.new(data=(xor_bytes(self.mac_secret, initiator_nonce) + ack), digest_bytes=32, update_after_digest=True)
+    
+    def set_RLPx_session_initiator1(
+            self, 
+            private_key: PrivateKey, 
+            peer: tuple[str, int, PublicKey],
+        ) -> None:
+        self.set_ephemeral_key_and_nonce()
+        auth_body = self.make_auth_body(private_key)
 
-    def handshake_receiver(self, enc_auth):
-        # 1) EPH key + nonce + version 준비
-        self.make_component()
+        enc_auth_body = encrypt(peer[2], auth_body)
+        auth = len(enc_auth_body).to_bytes(2, 'big') + enc_auth_body
+        self._quic.send_stream_data(0, auth)
+        self.egress_mac = auth
+    
+    def set_RLPx_session_initiator2(
+            self, 
+            private_key: PrivateKey, 
+            ack: bytes
+        ) -> None:
+        enc_ack_body = ack[2:]
+        ack_body = decrypt(private_key.to_hex(), enc_ack_body)
+        recipient_pubk = ack_body[:65]
+        recipient_nonce    = ack_body[65:97]
+        if ack_body[97:98] == self.version: pass
 
-        # 2) auth_msg 수신 → 복호화
-        auth    = decrypt(self.mine["static_priv"].to_hex(), enc_auth)
-        sig     = auth[:65]
-        self.counterpart["ephe_publ"] = auth[65:130]
-        self.counterpart["nonce"] = auth[130:162]
-        assert auth[162:163] == self.mine["version"]
 
-        # 3) 서명 검증을 통해 peer 식별
-        signer = PublicKey.from_signature_and_message(sig, self.counterpart["ephe_publ"], hasher=keccak).format(compressed=False)
-        # peers는 node_id 리스트
-        if signer not in [id for id in self.peers]:
+        ephemeral_key = self.ephe_private_key.ecdh(recipient_pubk)
+        shared_secret = keccak256(ephemeral_key + keccak256(recipient_nonce + self.nonce))
+        self.aes_secret = keccak256(ephemeral_key + shared_secret)
+        self.mac_secret = keccak256(ephemeral_key + self.aes_secret)
+        self.egress_mac = self.set_auth_mac(recipient_nonce, self.egress_mac)
+        self.ingress_mac = self.set_ack_mac(self.nonce, ack)
+        print("setting complete [aes, mac, engress, ingress]")
+
+    def set_RLPx_session_recipient(
+            self,
+            private_key: PrivateKey,
+            peers: list[tuple[str, int, PublicKey]],
+            auth: bytes,
+        )-> None:
+
+        enc_auth_body = auth[2:]
+        auth_body = decrypt(private_key.to_hex(), enc_auth_body)
+        sig        = auth_body[:65]
+        initiator_pubk   = auth_body[65:130]
+        initiator_nonce = auth_body[130:162]
+        if auth_body[162:163] == self.version: pass
+
+        signer = PublicKey.from_signature_and_message(sig, initiator_pubk, hasher=keccak256).format(compressed=False)
+        if signer not in [p[2] for p in peers]:
             raise Exception("Unknown peer")
 
-        # 4) ACK 조립·암호화·전송
-        ack_msg = self.mine["ephe_publ"] + self.mine["nonce"] + self.mine["version"]
-        enc_ack = encrypt(signer, ack_msg)
-        self.KDF(0)
-        return enc_ack
+        self.set_ephemeral_key_and_nonce()
+        ack_body = self.ephe_public_key + self.nonce + self.version
+        enc_ack_body = encrypt(signer, ack_body)
+        ack = len(enc_ack_body).to_bytes(2, 'big') + enc_ack_body
+        self._quic.send_stream_data(0, ack)
+
+        ephemeral_key = self.ephe_private_key.ecdh(initiator_pubk)
+        shared_secret = keccak256(ephemeral_key + keccak256(self.nonce + initiator_nonce))
+        self.aes_secret = keccak256(ephemeral_key + shared_secret)
+        self.mac_secret = keccak256(ephemeral_key + self.aes_secret)
+        self.egress_mac = self.set_ack_mac(initiator_nonce, ack)
+        self.ingress_mac = self.set_auth_mac(self.nonce, auth)
+        print("setting complete [aes, mac, engress, ingress]")
+
+    def handshake_initiator(self) -> None:
+        frame = self.ready_to_send(b'HELLO')
+        self._quic.send_stream_data(4, frame)
+
+    def handshake_recepient(self)-> None:
+        frame = self.ready_to_send(b'HELLO')
+        self._quic.send_stream_data(1, frame)
+
+    def ready_to_send(self, msg):
+        return self.framing(self.encode_rlp(msg))
     
-    def pack_tx_list(self, tx_list: list[rlp.Serializable]) -> bytes:
-        """
-        - tx_list: rlp.Serializable을 상속한 LegacyTransaction 객체들의 리스트
-        - 리턴값: RLPx framing·암호화가 완료된 '바이트'
-        """
-        if self.aes_sec is None or self.mac_sec is None:
-            raise Exception("pack_tx_list: AES 혹은 MAC 키가 설정되지 않았습니다.")
+    def ready_to_receive(self, frame):
+        return self.decode_rlp(self.deframing(frame))
+    
+    def encode_rlp(self, msg):
+        return rlp.encode(msg)
+    
+    def decode_rlp(self, bytes: bytes):
+        return rlp.decode(bytes)
 
-        # 1) RLP 직렬화: tx_list 전체
-        payload = rlp.encode(tx_list)
+    def framing(self, frame_data: bytes):
+        aes_header_cipher = AES.new(self.aes_secret, AES.MODE_CTR, counter=Counter.new(128, initial_value=1))
+        aes_frame_cipher = AES.new(self.aes_secret, AES.MODE_CTR, counter=Counter.new(128, initial_value=1))
+        mac_cipher = AES.new(self.mac_secret, AES.MODE_CTR, counter=Counter.new(128, initial_value=1))
+        # frame_ciphertext
+        pad_len = 16 - (len(frame_data) % 16) 
+        frame_plaintext = frame_data + b'\x00' * pad_len
+        frame_ciphertext = aes_frame_cipher.encrypt(frame_plaintext)
+        frame_size = len(frame_data).to_bytes(3, 'big')
 
-        return payload
 
-    def unpack_tx_list(self, payload: bytes):
-        """
-        - frame: pack_tx_list()가 반환한 전체 프레임 바이트
-        - 리턴값: rlp.decode(...) 결과 (tx_list를 그대로 복원한 Python 리스트)
-        """
-        if self.aes_sec is None or self.mac_sec is None:
-            raise Exception("unpack_tx_list: AES 혹은 MAC 키가 설정되지 않았습니다.")
+        header_data = frame_size + b'\x00' + b'\x00'
+        pad_len = 16 - (len(header_data) % 16)
+        header_plaintext = header_data + b'\x00' * pad_len
+        header_ciphertext = aes_header_cipher.encrypt(header_plaintext)
 
-        tx_list = rlp.decode(payload)
+        # header_mac
+        mac_digest1 = self.egress_mac.digest()[:16]
+        header_mac_seed = xor_bytes(mac_cipher.encrypt(mac_digest1), header_ciphertext)
+        self.egress_mac.update(header_mac_seed)
+        header_mac = self.egress_mac.digest()[:16]
 
-        return tx_list
+        # frame-mac
+        self.egress_mac.update(frame_ciphertext)
+        mac_digest2 = self.egress_mac.digest()[:16]
+        frame_mac_seed = xor_bytes(mac_cipher.encrypt(mac_digest2), mac_digest2)
+        self.egress_mac.update(frame_mac_seed)
+        frame_mac = self.egress_mac.digest()[:16]
+        return header_ciphertext + header_mac + frame_ciphertext + frame_mac
+    
+    def deframing(self, frame: bytes) -> bytes:
+        header_ciphertext = frame[:16]
+        header_mac        = frame[16:32]
+        frame_ciphertext  = frame[32:-16]
+        frame_mac         = frame[-16:]
+        aes_header_cipher = AES.new(self.aes_secret, AES.MODE_CTR, counter=Counter.new(128, initial_value=1))
+        aes_frame_cipher = AES.new(self.aes_secret, AES.MODE_CTR, counter=Counter.new(128, initial_value=1))
+        mac_cipher = AES.new(self.mac_secret, AES.MODE_CTR, counter=Counter.new(128, initial_value=1))
+
+        # (2-1) egress_mac.digest()와 대응하기 위해, 현재 ingress_mac 상태에서 digest()
+        mac_digest1 = self.ingress_mac.digest()[:16]
+
+        # (2-2) framing()과 동일하게 header_mac_seed 계산
+        #        header_mac_seed = AES-CBC(mac_digest1) xor header_ciphertext
+        header_mac_seed = xor_bytes(mac_cipher.encrypt(mac_digest1), header_ciphertext)
+
+        # (2-3) framing()과 동일하게, 이제 이 바이트를 ingress_mac에 update
+        self.ingress_mac.update(header_mac_seed)
+
+        # (2-4) update된 상태에서 digest() → computed_header_mac
+        computed_header_mac = self.ingress_mac.digest()[:16]
+        if computed_header_mac != header_mac:
+            raise ValueError("Header MAC verification failed")
+
+
+        # === 3. frame_mac 검증 ===
+        # (3-1) framing()과 똑같이, header_mac_seed 이후에 frame_ciphertext를 업데이트
+        self.ingress_mac.update(frame_ciphertext)
+        mac_digest2 = self.ingress_mac.digest()[:16]
+
+        # (3-2) framing()과 동일하게 frame_mac_seed 계산
+        frame_mac_seed = xor_bytes(mac_cipher.encrypt(mac_digest2), mac_digest2)
+
+        # (3-3) framing()과 동일하게 frame_mac_seed를 다시 update
+        self.ingress_mac.update(frame_mac_seed)
+
+        # (3-4) 최종 digest() → computed_frame_mac
+        computed_frame_mac = self.ingress_mac.digest()[:16]
+        if computed_frame_mac != frame_mac:
+            raise ValueError("Frame MAC verification failed")
+
+        # === 4. 복호화 ===
+        frame_plaintext = aes_frame_cipher.decrypt(frame_ciphertext)
+
+        header_plaintext = aes_header_cipher.decrypt(header_ciphertext)
+        # 4-3) header_plaintext의 상위 3바이트를 frame_size로 해석
+        #      (원본 데이터의 길이는 framing()에서 len(frame_data).to_bytes(3,'big')로 저장됨)
+        frame_size = int.from_bytes(header_plaintext[:3], 'big')
+        # 4-4) 패딩 포함 프레임 평문(frame_plaintext)에서 정확히 frame_size만큼만 원본
+        frame_data = frame_plaintext[:frame_size]
+        return frame_data
+
+    
