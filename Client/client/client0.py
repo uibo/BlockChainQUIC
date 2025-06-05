@@ -1,8 +1,9 @@
 import asyncio
-from coincurve import PrivateKey
-from RLPx_layer import RLPx_Layer
 
-from config.ECDSA_KEY import STATIC_PRIVATE, STATIC_PUBLIC
+from coincurve import PrivateKey
+
+from RLPx_layer import RLPx_Layer
+from config.config import client0
 
 class ExecutionClientTransport:
     def __init__(self, host: str, port: int, private_key: PrivateKey, public_key: bytes, known_peers: list[tuple]):
@@ -46,11 +47,9 @@ class ExecutionClientTransport:
 
 
 if __name__ == "__main__":
-    private_key = STATIC_PRIVATE[0]
-    host, port, public_key = ("0.0.0.0", 30300, STATIC_PUBLIC[0])
-    known_peers = [
-        ("127.0.0.1", 30301, STATIC_PUBLIC[1]),
-    ]
+    private_key = client0["private_key"]
+    host, port, public_key = (client0["host"], client0["port"], client0["public_key"])
+    known_peers = client0["known_peers"]
     execution_client_transport = ExecutionClientTransport(host, port, private_key, public_key, known_peers)
     asyncio.run(execution_client_transport.run())
 
