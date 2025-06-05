@@ -1,6 +1,7 @@
 from random import randbytes
-
+import time
 import asyncio
+
 from ecies import encrypt, decrypt
 from eth_utils import keccak as keccak256
 from coincurve import PrivateKey, PublicKey
@@ -127,9 +128,7 @@ class RLPx_Layer:
         header_data = frame_size + b'\x00' + b'\x00'
         pad_len = 16 - (len(header_data) % 16)
         header_plaintext = header_data + b'\x00' * pad_len
-        print(f"framing_header_plaintext: {header_plaintext}")
         header_ciphertext = aes_header_cipher.encrypt(header_plaintext)
-        print(f"framing_header_ciphertext: {header_ciphertext}")
 
         # header_mac
         mac_digest1 = self.egress_mac.digest()[:16]
@@ -198,7 +197,6 @@ class RLPx_Layer:
         return frame_data
 
     def ready_to_send(self, msg):
-        print(f"msg size: {len(msg)}")
         return self.framing(self.encode_rlp(msg))
     
     def ready_to_receive(self, frame):
@@ -211,14 +209,18 @@ class RLPx_Layer:
             reader: asyncio.StreamReader, 
             writer: asyncio.StreamWriter
         ) -> None:
+        start_time = time.perf_counter()
+        print(f"start handshake: {start_time}")
         await self.set_RLPx_session_initiator(private_key, peer, reader, writer)
         print("setting complete [aes, mac, engress, ingress]")
         frame = self.ready_to_send(b'HELLO')
         writer.write(frame)
         await writer.drain()
         msg = await self.receive_frame(reader)
-        print(msg)
         if msg != b'HELLO': raise Exception
+        end_time = time.perf_counter()
+        print(f"end handshake: {end_time}")
+        print(f"handshake latency: {end_time - start_time}")
         
 
     async def handshake_recepient(
@@ -228,22 +230,24 @@ class RLPx_Layer:
             reader: asyncio.StreamReader, 
             writer: asyncio.StreamWriter
         )-> None:
+        start_time = time.perf_counter()
+        print(f"start handshake: {start_time}")
         await self.set_RLPx_session_recipient(private_key, peers, reader, writer)
         print("setting complete [aes, mac, engress, ingress]")
         frame = self.ready_to_send(b'HELLO')
         writer.write(frame)
         await writer.drain()
         msg = await self.receive_frame(reader)
-        print(msg)
         if msg != b'HELLO': raise Exception
+        end_time = time.perf_counter()
+        print(f"end handshake: {end_time}")
+        print(f"handshake latency: {end_time - start_time}")
 
     async def receive_frame(self, reader: asyncio.StreamReader) -> bytes:
         aes_header_cipher = AES.new(self.aes_secret, AES.MODE_CTR, counter=Counter.new(128, initial_value=1))
 
         header_ciphertext = await reader.readexactly(16) 
-        print(f"received header_ciphertext: {header_ciphertext}")
         header_plaintext = aes_header_cipher.decrypt(header_ciphertext)
-        print(f"received header_plaintext: {header_plaintext}")
         frame_size = int.from_bytes(header_plaintext[:3], 'big')
         ciphertext_len = ((frame_size + 15) // 16) * 16
 
@@ -252,7 +256,6 @@ class RLPx_Layer:
         header_mac = await reader.readexactly(16)
         
         #    3-2) 페이로드 암호문 (frame_size 바이트)
-        print(f"ciphertext_len: {ciphertext_len}")
         frame_ciphertext = await reader.readexactly(ciphertext_len)
        
         #    3-3) 페이로드 MAC (16바이트)

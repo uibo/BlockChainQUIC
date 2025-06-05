@@ -1,9 +1,11 @@
 import asyncio
-from coincurve import PrivateKey
-from RLPx_layer import RLPx_Layer
+import time
 
-from config.ECDSA_KEY import STATIC_PRIVATE, STATIC_PUBLIC
-from tx_pool import tx_list_array
+from coincurve import PrivateKey
+
+from RLPx_layer import RLPx_Layer
+from config.config import client1
+from config.tx_pool import tx_list_array
 
 class ExecutionClientTransport:
     def __init__(self, host: str, port: int, private_key: PrivateKey, public_key: bytes, known_peers: list[tuple]):
@@ -19,6 +21,8 @@ class ExecutionClientTransport:
         await self.rlpx_layer.handshake_initiator(self.private_key, known_peers[0], reader, writer)
         with open("tx_sent.bin", "wb") as f:
             f.write(self.rlpx_layer.encode_rlp(tx_list_array))
+        start_time = time.perf_counter()
+        print(f"sending_time: {start_time}")
         frame = self.rlpx_layer.ready_to_send(tx_list_array)
         writer.write(frame)
         await writer.drain()
@@ -31,11 +35,9 @@ class ExecutionClientTransport:
 
 
 if __name__ == "__main__":
-    private_key = STATIC_PRIVATE[1]
-    host, port, public_key = ("0.0.0.0", 30301, STATIC_PUBLIC[1])
-    known_peers = [
-        ("127.0.0.1", 30300, STATIC_PUBLIC[0]),
-    ]
+    private_key = client1["private_key"]
+    host, port, public_key = (client1["host"], client1["port"], client1["public_key"])
+    known_peers = client1["known_peers"]
     execution_client_transport = ExecutionClientTransport(host, port, private_key, public_key, known_peers)
     asyncio.run(execution_client_transport.run())
 
