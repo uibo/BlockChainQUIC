@@ -21,7 +21,7 @@ class ExecutionClientTransport:
         await self.rlpx_layer.handshake_initiator(self.private_key, known_peers[0], reader, writer)
         with open("tx_sent.bin", "wb") as f:
             f.write(self.rlpx_layer.encode_rlp(tx_list_array))
-        start_time = time.perf_counter()
+        start_time = time.time()
         print(f"sending_time: {start_time}")
         frame = self.rlpx_layer.ready_to_send(tx_list_array)
         writer.write(frame)

@@ -10,6 +10,8 @@ from Crypto.Hash import keccak
 from Crypto.Util import Counter
 import rlp
 
+from config.tx_pool import LegacyTransaction
+
 def xor_bytes(a: bytes, b: bytes) -> bytes:
     return bytes(x ^ y for x, y in zip(a, b))
 
@@ -209,7 +211,7 @@ class RLPx_Layer:
             reader: asyncio.StreamReader, 
             writer: asyncio.StreamWriter
         ) -> None:
-        start_time = time.perf_counter()
+        start_time = time.time()
         print(f"start handshake: {start_time}")
         await self.set_RLPx_session_initiator(private_key, peer, reader, writer)
         print("setting complete [aes, mac, engress, ingress]")
@@ -218,7 +220,7 @@ class RLPx_Layer:
         await writer.drain()
         msg = await self.receive_frame(reader)
         if msg != b'HELLO': raise Exception
-        end_time = time.perf_counter()
+        end_time = time.time()
         print(f"end handshake: {end_time}")
         print(f"handshake latency: {end_time - start_time}")
         
@@ -230,7 +232,7 @@ class RLPx_Layer:
             reader: asyncio.StreamReader, 
             writer: asyncio.StreamWriter
         )-> None:
-        start_time = time.perf_counter()
+        start_time = time.time()
         print(f"start handshake: {start_time}")
         await self.set_RLPx_session_recipient(private_key, peers, reader, writer)
         print("setting complete [aes, mac, engress, ingress]")
@@ -239,7 +241,7 @@ class RLPx_Layer:
         await writer.drain()
         msg = await self.receive_frame(reader)
         if msg != b'HELLO': raise Exception
-        end_time = time.perf_counter()
+        end_time = time.time()
         print(f"end handshake: {end_time}")
         print(f"handshake latency: {end_time - start_time}")
 
