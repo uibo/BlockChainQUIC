@@ -1,12 +1,14 @@
 from random import randbytes
+import time
+
 from coincurve import PrivateKey, PublicKey
 from ecies import encrypt, decrypt
 from aioquic.quic.connection import QuicConnection
 from eth_utils import keccak as keccak256
 from Crypto.Cipher import AES
 from Crypto.Hash import keccak
-import rlp
 from Crypto.Util import Counter
+import rlp
 
 def xor_bytes(a: bytes, b: bytes) -> bytes:
     return bytes(x ^ y for x, y in zip(a, b))
@@ -43,6 +45,7 @@ class RLPx_Layer():
             private_key: PrivateKey, 
             peer: tuple[str, int, PublicKey],
         ) -> None:
+        print(f"start handshake: {time.time()}")
         self.set_ephemeral_key_and_nonce()
         auth_body = self.make_auth_body(private_key)
 
@@ -77,7 +80,7 @@ class RLPx_Layer():
             peers: list[tuple[str, int, PublicKey]],
             auth: bytes,
         )-> None:
-
+        print(f"start handshake: {time.time()}")
         enc_auth_body = auth[2:]
         auth_body = decrypt(private_key.to_hex(), enc_auth_body)
         sig        = auth_body[:65]

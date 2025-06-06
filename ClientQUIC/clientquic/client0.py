@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 from Crypto.Cipher import AES
 from aioquic.asyncio import serve
@@ -8,13 +9,8 @@ from aioquic.quic.events import StreamDataReceived
 from Crypto.Util import Counter
 
 from RLPx_layer import RLPx_Layer
-from config.ECDSA_KEY import STATIC_PRIVATE, STATIC_PUBLIC
-
-private_key = STATIC_PRIVATE[0]
-public_key = STATIC_PUBLIC[0]
-known_peers = [
-    ("127.0.0.1", 30301, STATIC_PUBLIC[1]),
-]
+from config.config import client0
+from config.tx_pool import tx_list_array
 
 class ExecutionClientTransport(QuicConnectionProtocol):
     def __init__(self, *args, host, port, private_key, public_key, known_peers, **kwargs):
@@ -41,12 +37,12 @@ class ExecutionClientTransport(QuicConnectionProtocol):
                 self._stream_queues[8].put_nowait(data)
 
             if stream_id == 0:
-                self.rlpx_layer.set_RLPx_session_recipient(self.private_key, known_peers, event.data)
+                self.rlpx_layer.set_RLPx_session_recipient(self.private_key, self.known_peers, event.data)
                 self.rlpx_layer.handshake_recepient()
             elif stream_id == 4:
                 msg = self.rlpx_layer.ready_to_receive(event.data)
-                print(msg)
                 if msg != b'HELLO': raise Exception
+                else: print(f"end handshake: {time.time()}")
 
     async def handle_stream(self, stream_id: int, queue: asyncio.Queue[bytes]) -> None:
         buffer = bytearray()
@@ -59,7 +55,6 @@ class ExecutionClientTransport(QuicConnectionProtocol):
         frame_size = int.from_bytes(header_plaintext[:3], 'big')
         ciphertext_len = ((frame_size + 15) // 16) * 16
         full_frame_size = 16 + 16 + ciphertext_len + 16
-        print(full_frame_size)
         while True:
             chunk = await queue.get()
             buffer.extend(chunk)
@@ -68,15 +63,9 @@ class ExecutionClientTransport(QuicConnectionProtocol):
                 del buffer[:full_frame_size]
                 if stream_id == 8:
                     msg = self.rlpx_layer.ready_to_receive(full_frame)
-                    print(f"[stream {stream_id}] Transaction frame received: {len(msg)}") 
-                    msg = self.rlpx_layer.encode_rlp(msg)
-                    with open("tx_received.bin", "wb") as f:
-                        f.write(msg)
-
-                    with open("tx_sent.bin", "rb") as f:
-                        sent = f.read()
-                    with open("tx_received.bin", "rb") as f:
-                        recv = f.read()
+                    print(f"receiving time: {time.time()}")
+                    recv = self.rlpx_layer.encode_rlp(msg)
+                    sent = self.rlpx_layer.encode_rlp(tx_list_array)
 
                     if sent == recv:
                         print("✅ 보내고 받은 페이로드가 완전히 일치합니다.")
@@ -86,16 +75,16 @@ class ExecutionClientTransport(QuicConnectionProtocol):
 async def main():
     config = QuicConfiguration(is_client=False)
     config.load_cert_chain("ssl_cert.pem", "ssl_key.pem")
-    await serve(host="0.0.0.0", 
-                port=30300, 
+    await serve(host=client0["host"], 
+                port=client0["port"], 
                 configuration=config, 
                 create_protocol=lambda *args, **kwargs: ExecutionClientTransport(
             *args,
-            host="0.0.0.0",
-            port=30301,
-            private_key=private_key,
-            public_key=public_key,
-            known_peers=known_peers,
+            host=client0["host"],
+            port=client0["port"],
+            private_key=client0["private_key"],
+            public_key=client0["public_key"],
+            known_peers=client0["known_peers"],
             **kwargs
         ))
     print("QUIC 서버가 0.0.0.0:30300에서 대기 중...")
