@@ -1,9 +1,11 @@
 import asyncio
+import time
 
 from coincurve import PrivateKey
 
 from RLPx_layer import RLPx_Layer
 from config.config import client0
+from config.tx_pool import tx_list_array
 
 class ExecutionClientTransport:
     def __init__(self, host: str, port: int, private_key: PrivateKey, public_key: bytes, known_peers: list[tuple]):
@@ -19,14 +21,10 @@ class ExecutionClientTransport:
         print(f"[+] Incoming from {addr}")
         await self.rlpx_layer.handshake_recepient(self.private_key, known_peers, reader, writer)
         msg = await self.rlpx_layer.receive_frame(reader)
-        msg = self.rlpx_layer.encode_rlp(msg)
-        with open("tx_received.bin", "wb") as f:
-            f.write(msg)
-
-        with open("tx_sent.bin", "rb") as f:
-            sent = f.read()
-        with open("tx_received.bin", "rb") as f:
-            recv = f.read()
+        end_time = time.time()
+        print(f"receiving_time: {end_time}")
+        recv = self.rlpx_layer.encode_rlp(msg)
+        sent = self.rlpx_layer.encode_rlp(tx_list_array)
 
         if sent == recv:
             print("✅ 보내고 받은 페이로드가 완전히 일치합니다.")

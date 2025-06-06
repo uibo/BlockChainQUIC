@@ -12,7 +12,7 @@ STATIC_PUBLIC = [
 
 client0 = {
     "host": "0.0.0.0",
-    "port": 30303, 
+    "port": 30300, 
     "private_key": STATIC_PRIVATE[0],
     "public_key": STATIC_PUBLIC[0],
     "known_peers": [
@@ -26,6 +26,6 @@ client1 = {
     "private_key": STATIC_PRIVATE[1],
     "public_key": STATIC_PUBLIC[1],
     "known_peers": [
-        ("127.0.0.1", 30303, STATIC_PUBLIC[0]),
+        ("127.0.0.1", 30300, STATIC_PUBLIC[0]),
     ]
 }
