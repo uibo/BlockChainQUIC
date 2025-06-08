@@ -131,7 +131,7 @@ class RLPx_Layer():
         aes_frame_cipher = AES.new(self.aes_secret, AES.MODE_CTR, counter=Counter.new(128, initial_value=1))
         mac_cipher = AES.new(self.mac_secret, AES.MODE_CTR, counter=Counter.new(128, initial_value=1))
         # frame_ciphertext
-        pad_len = 16 - (len(frame_data) % 16) 
+        pad_len = (16 - (len(frame_data) % 16)) % 16
         frame_plaintext = frame_data + b'\x00' * pad_len
         frame_ciphertext = aes_frame_cipher.encrypt(frame_plaintext)
         frame_size = len(frame_data).to_bytes(3, 'big')

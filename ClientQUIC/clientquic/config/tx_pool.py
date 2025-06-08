@@ -42,6 +42,6 @@ def split_data(data: tuple, length: int):  # 25MB
         chunks.append(chunk)
     return chunks
 
-tx_amount = 100000
+tx_amount = 50000
 tx_list_array = make_tx_list(tx_amount)
 chunks = split_data(tx_list_array, tx_amount)
