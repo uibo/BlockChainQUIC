@@ -212,17 +212,17 @@ class RLPx_Layer:
             writer: asyncio.StreamWriter
         ) -> None:
         start_time = time.time()
-        print(f"start handshake: {start_time}")
+        #print(f"start handshake: {start_time}")
         await self.set_RLPx_session_initiator(private_key, peer, reader, writer)
-        print("setting complete [aes, mac, engress, ingress]")
+        #print("setting complete [aes, mac, engress, ingress]")
         frame = self.ready_to_send(b'HELLO')
         writer.write(frame)
         await writer.drain()
         msg = await self.receive_frame(reader)
         if msg != b'HELLO': raise Exception
         end_time = time.time()
-        print(f"end handshake: {end_time}")
-        print(f"handshake latency: {end_time - start_time}")
+        #print(f"end handshake: {end_time}")
+        print(f"handshake latency: {end_time - start_time:7.4f}")
         
 
     async def handshake_recepient(
@@ -233,17 +233,17 @@ class RLPx_Layer:
             writer: asyncio.StreamWriter
         )-> None:
         start_time = time.time()
-        print(f"start handshake: {start_time}")
+        #print(f"start handshake: {start_time}")
         await self.set_RLPx_session_recipient(private_key, peers, reader, writer)
-        print("setting complete [aes, mac, engress, ingress]")
+        #print("setting complete [aes, mac, engress, ingress]")
         frame = self.ready_to_send(b'HELLO')
         writer.write(frame)
         await writer.drain()
         msg = await self.receive_frame(reader)
         if msg != b'HELLO': raise Exception
         end_time = time.time()
-        print(f"end handshake: {end_time}")
-        print(f"handshake latency: {end_time - start_time}")
+        #print(f"end handshake: {end_time}")
+        print(f"handshake latency: {end_time - start_time:7.4f}")
 
     async def receive_frame(self, reader: asyncio.StreamReader) -> bytes:
         aes_header_cipher = AES.new(self.aes_secret, AES.MODE_CTR, counter=Counter.new(128, initial_value=1))
