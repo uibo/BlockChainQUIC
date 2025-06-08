@@ -87,12 +87,13 @@ class ExecutionClientTransport(QuicConnectionProtocol):
         async with self._receive_lock:
             message = self.rlpx_layer.ready_to_receive(full_frame)
             print(f"[stream {stream_id}] receiving time: {time.time()}")
-
             # 4) 처리 끝났으면 순서 대기열에서 내 ID 제거
             self.stream_order.pop(0)
             if not self.stream_order:
-                frame = self.rlpx_layer.ready_to_send(b'FIN')
-                self._quic.send_stream_data(self._quic.get_next_available_stream_id(), frame)
+                frame = self.rlpx_layer.ready_to_send(b'fin')
+                self._quic.send_stream_data(stream_id, frame, end_stream=True)
+                self.transmit()
+                print(stream_id)
 
 async def main():
     config = QuicConfiguration(is_client=False)

@@ -25,6 +25,7 @@ class ExecutionClientTransport(QuicConnectionProtocol):
 
     def quic_event_received(self, event) -> None:
         if isinstance(event, StreamDataReceived):
+            print(event.stream_id)
             if event.stream_id == 0:
                 self.rlpx_layer.set_RLPx_session_initiator2(self.private_key, event.data)
                 self.rlpx_layer.handshake_initiator()
@@ -32,7 +33,7 @@ class ExecutionClientTransport(QuicConnectionProtocol):
                 msg = self.rlpx_layer.ready_to_receive(event.data)
                 if msg != b'HELLO': raise Exception
                 else: print(f"end handshake: {time.time()}")
-                asyncio.create_task(self.send_parallel(chunks))
+                task = asyncio.create_task(self.send_parallel(chunks))
             else:
                 msg = self.rlpx_layer.ready_to_receive(event.data)
                 end_time = time.time()
@@ -46,10 +47,6 @@ class ExecutionClientTransport(QuicConnectionProtocol):
                 frame = self.rlpx_layer.ready_to_send(data)
                 self._quic.send_stream_data(i, frame, end_stream=True)
                 print(f"sending time: {time.time()}, stream_id: {i}")
-                
-                
-
-
                 
 async def run():
     config = QuicConfiguration(is_client=True)
@@ -70,8 +67,6 @@ async def run():
         )) as execution_client_transport:
         execution_client_transport.rlpx_layer.set_RLPx_session_initiator1(execution_client_transport.private_key, execution_client_transport.known_peers[0])
         await asyncio.Future()
-
-
 
 if __name__ == "__main__":
     asyncio.run(run())
