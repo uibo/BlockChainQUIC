@@ -121,7 +121,7 @@ class RLPx_Layer:
         aes_frame_cipher = AES.new(self.aes_secret, AES.MODE_CTR, counter=Counter.new(128, initial_value=1))
         mac_cipher = AES.new(self.mac_secret, AES.MODE_CTR, counter=Counter.new(128, initial_value=1))
         # frame_ciphertext
-        pad_len = (16 - (len(frame_data) % 16)) % 16
+        pad_len = 16 - (len(frame_data) % 16) 
         frame_plaintext = frame_data + b'\x00' * pad_len
         frame_ciphertext = aes_frame_cipher.encrypt(frame_plaintext)
         frame_size = len(frame_data).to_bytes(3, 'big')
@@ -212,19 +212,18 @@ class RLPx_Layer:
             writer: asyncio.StreamWriter
         ) -> None:
         start_time = time.time()
-        #print(f"start handshake: {start_time}")
+        # print(f"start handshake: {start_time}")
         await self.set_RLPx_session_initiator(private_key, peer, reader, writer)
-        #print("setting complete [aes, mac, engress, ingress]")
+        # print("setting complete [aes, mac, engress, ingress]")
         frame = self.ready_to_send(b'HELLO')
         writer.write(frame)
         await writer.drain()
         msg = await self.receive_frame(reader)
         if msg != b'HELLO': raise Exception
         end_time = time.time()
-        #print(f"end handshake: {end_time}")
+        # print(f"end handshake: {end_time}")
         print(f"handshake latency: {end_time - start_time:7.4f}")
         
-
     async def handshake_recepient(
             self,
             private_key: PrivateKey,
@@ -233,16 +232,16 @@ class RLPx_Layer:
             writer: asyncio.StreamWriter
         )-> None:
         start_time = time.time()
-        #print(f"start handshake: {start_time}")
+        # print(f"start handshake: {start_time}")
         await self.set_RLPx_session_recipient(private_key, peers, reader, writer)
-        #print("setting complete [aes, mac, engress, ingress]")
+        # print("setting complete [aes, mac, engress, ingress]")
         frame = self.ready_to_send(b'HELLO')
         writer.write(frame)
         await writer.drain()
         msg = await self.receive_frame(reader)
         if msg != b'HELLO': raise Exception
         end_time = time.time()
-        #print(f"end handshake: {end_time}")
+        # print(f"end handshake: {end_time}")
         print(f"handshake latency: {end_time - start_time:7.4f}")
 
     async def receive_frame(self, reader: asyncio.StreamReader) -> bytes:

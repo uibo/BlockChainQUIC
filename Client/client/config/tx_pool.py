@@ -18,9 +18,9 @@ class LegacyTransaction(rlp.Serializable):
 
 def make_tx_list(num: int):
     tx_list = []
-    for i in range(num):
+    for _ in range(num):
         tx_list.append(LegacyTransaction(
-            nonce=i,
+            nonce=num,
             gas_price=20_000_000_000,
             gas_limit=21000,
             to=bytes.fromhex("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
@@ -32,16 +32,4 @@ def make_tx_list(num: int):
         ))
     return tx_list
 
-
-def split_data(data: tuple, length: int):  # 25MB
-    chunks = []
-    divisor = 4
-    n = length // divisor
-    for i in range(0, divisor):
-        chunk = data[n*i:n*(i+1)]
-        chunks.append(chunk)
-    return chunks
-
-tx_amount = 50000
-tx_list_array = make_tx_list(tx_amount)
-chunks = split_data(tx_list_array, tx_amount)
+tx_list_array = make_tx_list(10000)
