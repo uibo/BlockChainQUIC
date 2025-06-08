@@ -20,6 +20,7 @@ class ExecutionClientTransport(QuicConnectionProtocol):
         self.public_key = public_key
         self.known_peers = known_peers
         self.rlpx_layer = RLPx_Layer(self._quic)
+        self.start_time = None
 
     def quic_event_received(self, event) -> None:
         if isinstance(event, StreamDataReceived):
@@ -28,11 +29,16 @@ class ExecutionClientTransport(QuicConnectionProtocol):
                 self.rlpx_layer.handshake_initiator()
             elif event.stream_id == 1:
                 msg = self.rlpx_layer.ready_to_receive(event.data)
-                if msg != b'HELLO': raise Exception
-                else: print(f"end handshake: {time.time()}")
-                print(f"sending time: {time.time()}")
+                if msg != b'HELLO': 
+                    raise Exception
+                else: 
+                    print(f"end handshake: {time.time()}")
+                self.start_time = time.time()
                 frame = self.rlpx_layer.ready_to_send(tx_list_array)
                 self._quic.send_stream_data(8, frame)
+            else:
+                end_time = time.time()
+                print(f"RTT TIME: {end_time - self.start_time}")
 
 
                 

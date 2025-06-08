@@ -10,7 +10,6 @@ from Crypto.Util import Counter
 
 from RLPx_layer import RLPx_Layer
 from config.config import client0
-from config.tx_pool import tx_list_array
 
 class ExecutionClientTransport(QuicConnectionProtocol):
     def __init__(self, *args, host, port, private_key, public_key, known_peers, **kwargs):
@@ -64,13 +63,9 @@ class ExecutionClientTransport(QuicConnectionProtocol):
                 if stream_id == 8:
                     msg = self.rlpx_layer.ready_to_receive(full_frame)
                     print(f"receiving time: {time.time()}")
-                    recv = self.rlpx_layer.encode_rlp(msg)
-                    sent = self.rlpx_layer.encode_rlp(tx_list_array)
-
-                    if sent == recv:
-                        print("✅ 보내고 받은 페이로드가 완전히 일치합니다.")
-                    else:
-                        print("❌ 페이로드가 다릅니다.")
+                    msg = "fin"
+                    frame = self.rlpx_layer.ready_to_send(msg)
+                    self._quic.send_stream_data(stream_id, frame)
 
 async def main():
     config = QuicConfiguration(is_client=False)

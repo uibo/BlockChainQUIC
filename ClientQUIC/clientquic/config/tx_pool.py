@@ -28,6 +28,6 @@ def make_tx_list(num: int):
             r=int("0x1c5e5b7e1b0c9d10d2a7c93ec17e3edb14e06c0e7c6f2445a84f9cb6b7d6f3f3", 16),
             s=int("0x5f74bcd9d8ed5f6014dbf7d7d1ee84adf196e2df6a11a2d32b3b1a3ccf3e5e6b", 16),
         ))
-    return tuple(tx_list)
+    return tx_list
 
-tx_list_array = make_tx_list(10000)
+tx_list_array = make_tx_list(50000)
